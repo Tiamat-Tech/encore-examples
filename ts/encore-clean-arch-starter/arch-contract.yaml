@@ -1,0 +1,156 @@
+# ArchContract — architecture as an executable contract.
+#
+# This starter activates the built-in, AAA-quality `encore-ts` preset (Encore
+# service boundaries, thin handlers, no cross-service deep imports, no
+# process.exit) and then RESHAPES it into a complete, strict Clean Architecture:
+# real layers in dependency order, every file accounted for, and the dependency
+# rule enforced both by layer and by shape.
+#
+#   npm run arch:check
+#
+# A preset is merged UNDER your config, so everything below only tightens it.
+version: 1
+
+project:
+  name: encore-clean-arch-starter
+
+presets:
+  - encore-ts
+
+# Every analyzed file must belong to a layer — no orphans, no "misc".
+unassignedFiles: error
+
+# --- The layers, in dependency order -----------------------------------------
+# We override three preset layers (`domain`, `infrastructure`, `api`) so they map
+# onto Clean Architecture folders, and add `application` + `composition`. The
+# `api` layer is repurposed onto `presentation/**` so the preset's thin-handler
+# expectations apply to our controllers.
+layers:
+  - name: domain
+    match: ["**/domain/**/*.ts"]
+  - name: application
+    match: ["**/application/**/*.ts"]
+  - name: infrastructure
+    match: ["**/infrastructure/**/*.ts"]
+  - name: api
+    match: ["**/presentation/**/*.ts"]
+  - name: composition
+    match: ["**/composition/**/*.ts"]
+
+# --- The dependency rule (inward only) ---------------------------------------
+ruleset:
+  service-definition: { mayDependOn: [] }
+  domain: { mayDependOn: [] } # the center depends on NOTHING
+  application: { mayDependOn: [domain] } # use-cases orchestrate the domain
+  infrastructure: { mayDependOn: [domain, application] } # adapters implement ports
+  api: { mayDependOn: [application, domain, composition] } # handlers call use-cases
+  composition: { mayDependOn: [domain, application, infrastructure, service-definition] } # the only wirer
+  shared: { mayDependOn: [] }
+
+# Because only `composition` may depend on `infrastructure`, the composition root
+# is the single place concrete adapters can be referenced — enforced, not trusted.
+
+# --- Shape & purity ----------------------------------------------------------
+expectations:
+  # Use-cases: one responsibility, a `*UseCase` class exposing `execute()`.
+  # `appliesTo: class` scopes the check to the class, ignoring co-located DTOs.
+  - name: use-cases-are-classes-with-execute
+    expect: { path: ["**/application/use-cases/**/*.usecase.ts"] }
+    appliesTo: { kind: ["class"] }
+    to: { haveSuffix: ["UseCase"], haveMethod: ["execute"] }
+    severity: error
+
+  # Ports are pure contracts — interfaces (or type aliases), never classes.
+  - name: domain-ports-are-interfaces
+    expect: { path: ["**/domain/**/ports/**/*.port.ts"] }
+    to: { be: ["interface", "type"] }
+    severity: error
+  - name: application-ports-are-interfaces
+    expect: { path: ["**/application/ports/**/*.port.ts"] }
+    to: { be: ["interface", "type"] }
+    severity: error
+
+  # Domain building blocks are classes.
+  - name: entities-are-classes
+    expect: { path: ["**/domain/**/*.entity.ts"] }
+    to: { be: ["class"] }
+    severity: error
+  - name: value-objects-are-classes
+    expect: { path: ["**/domain/**/*.vo.ts"] }
+    to: { be: ["class"] }
+    severity: error
+
+  # Domain errors extend the shared base and carry the `Error` suffix.
+  - name: domain-errors-extend-the-base
+    expect: { path: ["**/domain/errors/*.error.ts"] }
+    appliesTo: { kind: ["class"] }
+    to: { extend: ["DomainError"], haveSuffix: ["Error"] }
+    ignoring: ["**/domain/errors/domain-error.ts"]
+    severity: error
+
+  # Every infrastructure class is an adapter that implements a port.
+  - name: infrastructure-adapters-implement-a-port
+    expect: { path: ["**/infrastructure/**/*.ts"] }
+    appliesTo: { kind: ["class"] }
+    to: { implement: ["*Port"] }
+    severity: error
+
+  # Named building blocks only — no default or barrel (`export *`) exports in the core.
+  - name: domain-has-no-default-or-namespace-export
+    expect: { path: ["**/domain/**/*.ts"] }
+    to: { notHave: ["defaultExport", "namespaceExport"] }
+    severity: error
+  - name: application-has-no-default-or-namespace-export
+    expect: { path: ["**/application/**/*.ts"] }
+    to: { notHave: ["defaultExport", "namespaceExport"] }
+    severity: error
+
+  # Purity by package: the domain is free of frameworks AND the runtime;
+  # the application is free of frameworks (so use-cases are portable).
+  - name: domain-is-free-of-frameworks-and-runtime
+    expect: { path: ["**/domain/**/*.ts"] }
+    to:
+      notDependOnPackages:
+        - "encore.dev"
+        - "encore.dev/*"
+        - "node:*"
+        - "express"
+        - "fastify"
+        - "@nestjs/*"
+        - "@prisma/client"
+        - "@prisma/client/*"
+        - "prisma"
+        - "typeorm"
+        - "mongoose"
+        - "drizzle-orm"
+        - "drizzle-orm/*"
+        - "axios"
+        - "undici"
+        - "node-fetch"
+    severity: error
+  - name: application-is-framework-agnostic
+    expect: { path: ["**/application/**/*.ts"] }
+    to:
+      notDependOnPackages:
+        - "encore.dev"
+        - "encore.dev/*"
+        - "express"
+        - "fastify"
+        - "@nestjs/*"
+        - "react"
+        - "react-dom"
+    severity: error
+
+  # Controllers delegate to use-cases — they never instantiate anything themselves.
+  - name: controllers-delegate-and-never-instantiate
+    expect: { path: ["**/presentation/**/*.ts"] }
+    to:
+      notInstantiate:
+        - "*UseCase"
+        - "*Repository"
+        - "*Service"
+        - "*Client"
+        - "SQLDatabase"
+        - "PrismaClient"
+      notCall: ["console.log", "process.exit"]
+    severity: error

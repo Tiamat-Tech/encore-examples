@@ -1,0 +1,25 @@
+{
+  "name": "encore-clean-arch-starter",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Encore.ts Clean Architecture starter, enforced by ArchContract",
+  "license": "MPL-2.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest",
+    "arch:check": "arch-contract check",
+    "arch:check:json": "arch-contract check --format json"
+  },
+  "devDependencies": {
+    "@types/node": "^20.5.7",
+    "arch-contract": "^0.2.0",
+    "typescript": "^5.2.2",
+    "vitest": "^1.5.0"
+  },
+  "dependencies": {
+    "encore.dev": "^1.57.4"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.13.0"
+  }
+}
